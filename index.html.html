@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Laporan Kerosakan Fasiliti Sekolah</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        @media print {
+            body * { visibility: hidden; }
+            #print-section, #print-section * { visibility: visible; }
+            #print-section { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; }
+            @page { size: A4; margin: 15mm 15mm; }
+            .no-print { display: none !important; }
+            .print-border { border: 1px solid #000; }
+        }
+        
+        .tab-btn { padding: 10px 20px; font-weight: bold; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab-btn.active { border-bottom: 2px solid #2563eb; color: #2563eb; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const App = () => {
+            const [view, setView] = useState('list'); // list, form, verify, print
+            const [reports, setReports] = useState([]);
+            const [selectedReport, setSelectedReport] = useState(null);
+
+            // Load data from localStorage on mount
+            useEffect(() => {
+                const saved = localStorage.getItem('school_reports');
+                if (saved) {
+                    setReports(JSON.parse(saved));
+                }
+            }, []);
+
+            // Save to localStorage when reports change
+            useEffect(() => {
+                localStorage.setItem('school_reports', JSON.stringify(reports));
+            }, [reports]);
+
+            const kelasOptions = [
+                "PRASEKOLAH", "1BD", "1BP DELIMA", "1BP ZAMRUD",
+                "2BP DELIMA", "2BP ZAMRUD", "3BD", "3BP", "4BD",
+                "4BL", "4BP", "5BD", "5BP", "6BD", "6BP"
+            ];
+
+            const senaraiKategori = ["Dinding", "Pendawaian", "Lantai", "Siling", "Tingkap", "Pintu", "Papan hitam/putih", "Perpaipan"];
+
+            const [formData, setFormData] = useState({
+                id: '',
+                tarikh: new Date().toISOString().split('T')[0],
+                pelapor: '',
+                lokasi: '',
+                namaKelas: '',
+                kategori: '',
+                penerangan: '',
+                gambar: [], // array of base64 strings
+                disahkan: false,
+                ulasanGuruBesar: '',
+                tarikhPengesahan: ''
+            });
+
+            const handleJanaAI = () => {
+                alert("Simulasi: AI sedang menganalisa gambar dan kata kunci... 
+
+'Berdasarkan analisa pemerhatian, kerosakan memerlukan penyelenggaraan segera bagi mengelakkan komplikasi keselamatan kepada murid-murid.'");
+                setFormData({...formData, penerangan: formData.penerangan + " [Penerangan Dijana AI: Kerosakan pada struktur ini memerlukan perhatian segera pihak penyelenggara untuk mengelakkan risiko keselamatan kepada murid-murid dan staf di kawasan ini.]"});
+            };
+
+            const handleSave = () => {
+                const newReport = { ...formData, id: Date.now().toString() };
+                setReports([newReport, ...reports]);
+                setView('list');
+                setFormData({
+                    id: '', tarikh: new Date().toISOString().split('T')[0],
+                    pelapor: '', lokasi: '', namaKelas: '', kategori: '', penerangan: '', gambar: [],
+                    disahkan: false, ulasanGuruBesar: '', tarikhPengesahan: ''
+                });
+            };
+
+            const handleVerifySubmit = (ulasan) => {
+                const updated = reports.map(r => {
+                    if (r.id === selectedReport.id) {
+                        return { ...r, disahkan: true, ulasanGuruBesar: ulasan, tarikhPengesahan: new Date().toISOString().split('T')[0] };
+                    }
+                    return r;
+                });
+                setReports(updated);
+                setView('list');
+            };
+
+            const isBilikDarjah = formData.lokasi.toLowerCase().includes('bilik darjah');
+
+            return (
+                <div class="max-w-5xl mx-auto p-4 md:p-6 bg-white shadow-xl min-h-screen">
+                    {/* Header */}
+                    <div class="flex flex-col items-center mb-8 no-print text-center">
+                        <img src="logo.png" alt="Logo Sekolah" class="w-32 h-32 object-contain mb-4 border p-1 rounded-full shadow-sm" onError={(e) => { e.target.src='https://via.placeholder.com/150?text=Logo+Sekolah'; }} />
+                        <h1 class="text-3xl font-bold text-blue-900">Sistem Laporan Kerosakan Fasiliti</h1>
+                        <p class="text-gray-500 mt-1">Sekolah Kebangsaan Pendidikan Khas Miri</p>
+                    </div>
+
+                    {/* Navigation */}
+                    <div class="flex space-x-4 mb-6 border-b no-print">
+                        <div class={`tab-btn ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>Senarai Laporan</div>
+                        <div class={`tab-btn ${view === 'form' ? 'active' : ''}`} onClick={() => setView('form')}>+ Laporan Baru</div>
+                    </div>
+
+                    {/* View: LIST */}
+                    {view === 'list' && (
+                        <div>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full bg-white border">
+                                    <thead>
+                                        <tr class="bg-gray-100 text-left">
+                                            <th class="py-3 px-4 border-b">Tarikh</th>
+                                            <th class="py-3 px-4 border-b">Pelapor</th>
+                                            <th class="py-3 px-4 border-b">Lokasi</th>
+                                            <th class="py-3 px-4 border-b">Status</th>
+                                            <th class="py-3 px-4 border-b text-center">Tindakan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {reports.length === 0 ? (
+                                            <tr><td colSpan="5" class="py-8 text-center text-gray-500">Tiada laporan direkodkan.</td></tr>
+                                        ) : reports.map(r => (
+                                            <tr key={r.id} class="border-b hover:bg-gray-50">
+                                                <td class="py-3 px-4">{r.tarikh}</td>
+                                                <td class="py-3 px-4">{r.pelapor}</td>
+                                                <td class="py-3 px-4">{r.lokasi} {r.namaKelas && `(${r.namaKelas})`}</td>
+                                                <td class="py-3 px-4">
+                                                    {r.disahkan ? 
+                                                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">Disahkan</span> : 
+                                                        <span class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Belum Disahkan</span>
+                                                    }
+                                                </td>
+                                                <td class="py-3 px-4 text-center space-x-2">
+                                                    <button onClick={() => { setSelectedReport(r); setView('print'); }} class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">Cetak/PDF</button>
+                                                    {!r.disahkan && (
+                                                        <button onClick={() => { setSelectedReport(r); setView('verify'); }} class="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700">Sahkan</button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* View: FORM */}
+                    {view === 'form' && (
+                        <div class="max-w-2xl mx-auto bg-gray-50 p-6 rounded-lg border">
+                            <h2 class="text-xl font-bold mb-4 border-b pb-2">Borang Laporan Baru</h2>
+                            
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block font-semibold mb-1">Nama Pelapor (Staf/Guru):</label>
+                                    <input type="text" class="w-full border p-2 rounded" placeholder="HURUF BESAR" value={formData.pelapor} onChange={e => setFormData({...formData, pelapor: e.target.value.toUpperCase()})} />
+                                </div>
+                                
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block font-semibold mb-1">Bilik / Lokasi:</label>
+                                        <input type="text" class="w-full border p-2 rounded" placeholder="Contoh: Bilik Darjah, Tandas" value={formData.lokasi} onChange={e => setFormData({...formData, lokasi: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label class="block font-semibold mb-1">Nama Kelas (Jika Berkaitan):</label>
+                                        {isBilikDarjah ? (
+                                            <select class="w-full border p-2 rounded" value={formData.namaKelas} onChange={e => setFormData({...formData, namaKelas: e.target.value})}>
+                                                <option value="">-- Pilih Kelas --</option>
+                                                {kelasOptions.map(k => <option key={k} value={k}>{k}</option>)}
+                                            </select>
+                                        ) : (
+                                            <input type="text" class="w-full border p-2 rounded" placeholder="-" value={formData.namaKelas} onChange={e => setFormData({...formData, namaKelas: e.target.value})} />
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block font-semibold mb-1">Kategori Kerosakan:</label>
+                                    <select class="w-full border p-2 rounded" value={formData.kategori} onChange={e => setFormData({...formData, kategori: e.target.value})}>
+                                        <option value="">-- Pilih Kategori --</option>
+                                        {senaraiKategori.map(k => <option key={k} value={k}>{k}</option>)}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <div class="flex justify-between items-end mb-1">
+                                        <label class="block font-semibold">Penerangan / Catatan Kerosakan:</label>
+                                        <button type="button" onClick={handleJanaAI} class="bg-purple-600 hover:bg-purple-700 text-white text-xs px-3 py-1 rounded flex items-center shadow">✨ Jana AI</button>
+                                    </div>
+                                    <textarea rows="4" class="w-full border p-2 rounded" placeholder="Taip kata kunci (cth: paip bocor) atau penerangan penuh..." value={formData.penerangan} onChange={e => setFormData({...formData, penerangan: e.target.value})}></textarea>
+                                </div>
+
+                                <div>
+                                    <label class="block font-semibold mb-1">Muat Naik Gambar (Max 2):</label>
+                                    <input type="file" accept="image/*" multiple onChange={(e) => {
+                                        const files = Array.from(e.target.files).slice(0, 2);
+                                        const promises = files.map(f => {
+                                            return new Promise((resolve) => {
+                                                const reader = new FileReader();
+                                                reader.onload = (event) => resolve(event.target.result);
+                                                reader.readAsDataURL(f);
+                                            });
+                                        });
+                                        Promise.all(promises).then(base64Arr => setFormData({...formData, gambar: base64Arr}));
+                                    }} class="w-full border p-2 rounded bg-white" />
+                                    <div class="flex space-x-2 mt-2">
+                                        {formData.gambar.map((g, i) => <img key={i} src={g} class="w-32 h-32 object-cover border rounded" />)}
+                                    </div>
+                                </div>
+
+                                <div class="mt-6 text-right">
+                                    <button onClick={handleSave} disabled={!formData.pelapor || !formData.lokasi} class="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 disabled:opacity-50">Simpan Laporan</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* View: VERIFY (Guru Besar) */}
+                    {view === 'verify' && selectedReport && (
+                        <div class="max-w-2xl mx-auto bg-white p-6 rounded-lg border shadow">
+                            <h2 class="text-2xl font-bold mb-4 border-b pb-2 text-teal-800">Pengesahan Guru Besar</h2>
+                            
+                            <div class="mb-4 bg-gray-50 p-4 rounded border">
+                                <p><strong>Pelapor:</strong> {selectedReport.pelapor}</p>
+                                <p><strong>Lokasi:</strong> {selectedReport.lokasi} {selectedReport.namaKelas && `(${selectedReport.namaKelas})`}</p>
+                                <p><strong>Kategori:</strong> {selectedReport.kategori}</p>
+                                <p><strong>Penerangan:</strong> {selectedReport.penerangan}</p>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="block font-bold mb-2">Ulasan / Tindakan Susulan (Guru Besar):</label>
+                                <textarea id="ulasan-gb" rows="3" class="w-full border p-2 rounded focus:ring-2 focus:ring-teal-500" placeholder="Catatan kelulusan penyelenggaraan..."></textarea>
+                            </div>
+
+                            <div class="bg-yellow-50 p-4 border rounded mb-4 text-sm text-yellow-800">
+                                Dengan menekan butang di bawah, Guru Besar mengesahkan laporan ini dan tandatangan digital rasmi akan dijana.
+                            </div>
+
+                            <div class="flex justify-end space-x-3">
+                                <button onClick={() => setView('list')} class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Batal</button>
+                                <button onClick={() => {
+                                    const ulasan = document.getElementById('ulasan-gb').value;
+                                    handleVerifySubmit(ulasan);
+                                }} class="px-6 py-2 bg-teal-600 text-white font-bold rounded hover:bg-teal-700">Sahkan & Tandatangan</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* View: PRINT/PDF */}
+                    {view === 'print' && selectedReport && (
+                        <div>
+                            <div class="no-print mb-4 flex justify-between bg-blue-50 p-4 rounded border border-blue-200">
+                                <div>
+                                    <h3 class="font-bold text-blue-800">Pratonton Cetakan (A4)</h3>
+                                    <p class="text-sm text-blue-600">Klik butang cetak di sebelah dan pilih "Save as PDF" di bahagian Destination/Printer.</p>
+                                </div>
+                                <div class="space-x-2">
+                                    <button onClick={() => setView('list')} class="bg-gray-400 text-white px-4 py-2 rounded">Kembali</button>
+                                    <button onClick={() => window.print()} class="bg-blue-600 text-white px-4 py-2 rounded font-bold shadow hover:bg-blue-700">🖨️ Cetak / Muat Turun PDF</button>
+                                </div>
+                            </div>
+
+                            {/* A4 Document Area */}
+                            <div id="print-section" class="bg-white mx-auto text-black" style={{ maxWidth: '210mm', minHeight: '297mm', padding: '20mm', backgroundColor: 'white', boxSizing: 'border-box' }}>
+                                {/* Header */}
+                                <div class="flex items-center border-b-2 border-black pb-4 mb-6">
+                                    <img src="logo.png" alt="Logo Sekolah" style={{ width: '100px', height: '100px', objectFit: 'contain' }} />
+                                    <div class="ml-4 flex-1 text-center pr-12">
+                                        <h1 class="text-xl font-bold uppercase">Sekolah Kebangsaan Pendidikan Khas Miri</h1>
+                                        <h2 class="text-lg font-bold mt-1">BORANG LAPORAN KEROSAKAN FASILITI</h2>
+                                    </div>
+                                </div>
+
+                                {/* Info Table */}
+                                <table class="w-full mb-6 border-collapse">
+                                    <tbody>
+                                        <tr>
+                                            <td class="border border-black p-2 font-bold w-1/3 bg-gray-100">Tarikh Laporan</td>
+                                            <td class="border border-black p-2">{selectedReport.tarikh}</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="border border-black p-2 font-bold bg-gray-100">Nama Pelapor</td>
+                                            <td class="border border-black p-2">{selectedReport.pelapor}</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="border border-black p-2 font-bold bg-gray-100">Bilik / Lokasi</td>
+                                            <td class="border border-black p-2">{selectedReport.lokasi} {selectedReport.namaKelas && `(${selectedReport.namaKelas})`}</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="border border-black p-2 font-bold bg-gray-100">Kategori Kerosakan</td>
+                                            <td class="border border-black p-2">{selectedReport.kategori || '-'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="border border-black p-2 font-bold bg-gray-100 align-top">Penerangan / Catatan</td>
+                                            <td class="border border-black p-2 whitespace-pre-wrap min-h-[80px] block">{selectedReport.penerangan || '-'}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                {/* Images */}
+                                {selectedReport.gambar && selectedReport.gambar.length > 0 && (
+                                    <div class="mb-6 page-break-inside-avoid">
+                                        <h3 class="font-bold mb-2">Lampiran Bergambar:</h3>
+                                        <div class="flex space-x-4">
+                                            {selectedReport.gambar.map((img, i) => (
+                                                <img key={i} src={img} class="border border-black max-w-[45%] h-auto max-h-[250px] object-contain" />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Signatures */}
+                                <div class="grid grid-cols-2 gap-8 mt-12 page-break-inside-avoid">
+                                    <div class="border border-black p-4 min-h-[150px] relative">
+                                        <h4 class="font-bold border-b border-black pb-1 mb-12">Tandatangan Pelapor:</h4>
+                                        <p class="absolute bottom-4 left-4 font-semibold uppercase">{selectedReport.pelapor}</p>
+                                    </div>
+
+                                    <div class="border border-black p-4 min-h-[150px] relative">
+                                        <h4 class="font-bold border-b border-black pb-1 mb-2 bg-gray-100">Pengesahan Guru Besar:</h4>
+                                        {selectedReport.disahkan ? (
+                                            <div>
+                                                <p class="text-sm italic mb-8">"{selectedReport.ulasanGuruBesar || 'Telah disemak dan disahkan.'}"</p>
+                                                <div class="absolute bottom-4 left-4">
+                                                    <p class="font-bold text-teal-800">[ DISAHKAN ]</p>
+                                                    <p class="text-xs">Tarikh: {selectedReport.tarikhPengesahan}</p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p class="text-red-600 font-bold text-center mt-10">BELUM DISAHKAN</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
