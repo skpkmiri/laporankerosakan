@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Laporan Kerosakan SKPK Miri</title>
+    
+    <!-- Muatkan Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Muatkan React dan ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Muatkan Babel untuk membaca kod JSX (React) di dalam pelayar -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Muatkan ikon Lucide (versi Vanilla JS) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* CSS Khusus untuk Paparan Cetakan (PDF A4) */
+        @media print {
+            @page { size: A4; margin: 15mm; }
+            body { 
+                -webkit-print-color-adjust: exact !important; 
+                print-color-adjust: exact !important; 
+                background-color: white !important;
+            }
+            .print-break-inside-avoid { break-inside: avoid; }
+            .print-hidden { display: none !important; }
+            .print-shadow-none { box-shadow: none !important; }
+            .print-m-0 { margin: 0 !important; }
+            .print-p-8 { padding: 2rem !important; }
+            
+            /* Sembunyikan elemen UI yang tidak perlu dicetak */
+            header, .controls-print, button { display: none !important; }
+            
+            /* Tetapkan bekas utama mematuhi saiz kertas */
+            .print-container {
+                box-shadow: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen">
+    
+    <!-- Container utama untuk React -->
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        // Komponen pembantu untuk memaparkan ikon Lucide di dalam HTML/React CDN
+        const Icon = ({ name, size = 24, className = '', strokeWidth = 2, title }) => {
+            const [svgContent, setSvgContent] = useState('');
+            
+            useEffect(() => {
+                if (window.lucide && window.lucide.icons[name]) {
+                    const iconData = window.lucide.icons[name];
+                    const svgNode = window.lucide.createElement(iconData);
+                    svgNode.setAttribute('width', size);
+                    svgNode.setAttribute('height', size);
+                    if (className) svgNode.setAttribute('class', `lucide lucide-${name} ${className}`);
+                    svgNode.setAttribute('stroke-width', strokeWidth);
+                    setSvgContent(svgNode.outerHTML);
+                }
+            }, [name, size, className, strokeWidth]);
+
+            return <span className={`inline-flex items-center justify-center ${className}`} title={title} dangerouslySetInnerHTML={{ __html: svgContent }} />;
+        };
+
+        const SENARAI_STAF = [
+            "AZIZ BIN TAHIR", "MOHAMAD ABIDIN BIN SIPEK", "LING MEE CHOO", "SALIHIN BIN AHMAD",
+            "WONG PICK KING", "TING HUA EE", "JACQUELINE TIONG HOE DING", "NUR HIDAYU BINTI YUSOP",
+            "MOHD RAFEEQ BIN SULAIMAN", "FAZRI BIN BAKERI", "KHAIRI BIN SAHARI", "SABARIAH BINTI SOLHI",
+            "HILWA HAYATI BINTI MOHAMAD AJALAN", "JIMMY ANAK PETER", "BRYAN ANAK CONSTANT", "TING YU YONG",
+            "JERIAH ANAK SIMON", "ZEPRINA ANAK BENIK", "SYAEEZA LIANA BINTI RAMLI", "NURUL HUDA BTE MOHD IHWAN",
+            "HAIROL BIN ISMAIL", "MARY JANE AMOI UMPANG ANAK DANIEL MAWAT", "EIFILISIA AMBER ANAK MERVIN",
+            "MUHAMMAD ZULHUSAINI BIN ABDUL WAHAB", "AIDA MASTURINA BINTI HAMKA", "TENG RU YUN",
+            "DLIYANA ANAK JOHN", "VANITHA A/P SUBRAMANIAM", "CHRISTIAN SIMON", "NUR FADZLIAH AMAL BINTI OSMAN",
+            "HAZUANI BINTI HIPNI", "HELLEN RANJA ANAK BELI", "KAMARIA BINTI BUJANG", "NORAISYAH BINTI ASHARI",
+            "NORMIRI BINTI ABDULLAH", "AZENI BIN MAT", "MARIATI BINTI JULAIHI", "EVELYN SENA ANAK USSIK",
+            "ALEXANDER LIPA ANAK RANTIE"
+        ].map(name => name.toUpperCase());
+
+        const SENARAI_BILIK = [
+            "3PK - Bilik Audiologi", "Bilik Bimbingan dan Kaunseling", "Bilik Darjah 750 kaki persegi / sama 3 bay",
+            "Bilik Darjah < Daripada 750 kps / Kurang 3 bay", "Bilik Darjah Prasekolah", "Bilik Guru Besar",
+            "Bilik J-Qaf", "Bilik Khas", "Bilik Komputer", "Bilik Mesyuarat Utama",
+            "Bilik Operasi Skim Pinjaman Buku Teks Sekolah (BOSS)", "Bilik Pantri", "Bilik Pengurusan Sukan",
+            "Bilik Penolong Kanan (Pentadbiran)", "Bilik RBT (Sekolah Rendah)", "Bilik Sains (Sekolah Rendah)",
+            "Bilik Serbaguna", "Bilik Solat (Sekolah)", "Bumbung", "Dewan Terbuka (Berbumbung)",
+            "Koridor/Laluan Pejalan Kaki", "Pejabat Am", "Pejabat Guru", "Pondok Pengawal (Sekolah)",
+            "Pusat Sumber/Perpustakaan", "Stor Am", "Tandas Guru Lelaki", "Tandas Guru Perempuan",
+            "Tandas Murid Lelaki", "Tandas Murid Perempuan", "Tandas OKU", "Tangga", "Tangki"
+        ];
+
+        const KEADAAN_FIZIKAL = [
+            "Dinding", "Pendawaian", "Lantai", "Siling", "Tingkap", "Pintu", "Papan hitam/putih", "Perpaipan"
+        ];
+
+        const SENARAI_KELAS = [
+            "PRASEKOLAH", "1BD", "1BP DELIMA", "1BP ZAMRUD", "2BP DELIMA", "2BP ZAMRUD",
+            "3BD", "3BP", "4BD", "4BL", "4BP", "5BD", "5BP", "6BD", "6BP"
+        ];
+
+        const DrawingCanvas = ({ onSave, defaultImage, width = 600, height = 400, isSignature = false }) => {
+            const bgCanvasRef = useRef(null);
+            const canvasRef = useRef(null);
+            const [isDrawing, setIsDrawing] = useState(false);
+            const [hasDrawn, setHasDrawn] = useState(false);
+            const [activeTool, setActiveTool] = useState('pen'); 
+            const [snapshot, setSnapshot] = useState(null);
+            const [startX, setStartX] = useState(0);
+            const [startY, setStartY] = useState(0);
+            const [history, setHistory] = useState([]);
+
+            useEffect(() => {
+                const bgCanvas = bgCanvasRef.current;
+                const drawCanvas = canvasRef.current;
+                if (!bgCanvas || !drawCanvas) return;
+
+                const bgCtx = bgCanvas.getContext('2d');
+                const drawCtx = drawCanvas.getContext('2d');
+                
+                if (isSignature && !hasDrawn && !defaultImage) {
+                    bgCtx.fillStyle = 'white';
+                    bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+                }
+
+                if (defaultImage) {
+                    const img = new Image();
+                    img.onload = () => {
+                        const scale = Math.min(bgCanvas.width / img.width, bgCanvas.height / img.height);
+                        const x = (bgCanvas.width / 2) - (img.width / 2) * scale;
+                        const y = (bgCanvas.height / 2) - (img.height / 2) * scale;
+                        
+                        if (isSignature) {
+                            bgCtx.fillStyle = 'white';
+                            bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+                            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                            drawCtx.drawImage(img, x, y, img.width * scale, img.height * scale);
+                        } else {
+                            bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+                            bgCtx.drawImage(img, x, y, img.width * scale, img.height * scale);
+                        }
+                        setHasDrawn(true);
+                        setHistory([]); 
+                    };
+                    img.src = defaultImage;
+                }
+            }, [defaultImage, isSignature]);
+
+            const getCoordinates = (e) => {
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                
+                return {
+                    x: (clientX - rect.left) * scaleX,
+                    y: (clientY - rect.top) * scaleY
+                };
+            };
+
+            const startDrawing = (e) => {
+                const drawCtx = canvasRef.current.getContext('2d');
+                const { x, y } = getCoordinates(e);
+                setStartX(x);
+                setStartY(y);
+
+                if (!isSignature) {
+                    setSnapshot(drawCtx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height));
+                }
+
+                drawCtx.beginPath();
+                drawCtx.moveTo(x, y);
+                setIsDrawing(true);
+            };
+
+            const draw = (e) => {
+                if (!isDrawing) return;
+                e.preventDefault(); 
+                
+                const drawCtx = canvasRef.current.getContext('2d');
+                const { x, y } = getCoordinates(e);
+
+                if (activeTool === 'eraser') {
+                    drawCtx.lineTo(x, y);
+                    drawCtx.globalCompositeOperation = 'destination-out';
+                    drawCtx.strokeStyle = 'rgba(0,0,0,1)';
+                    drawCtx.lineWidth = 15;
+                    drawCtx.lineCap = 'round';
+                    drawCtx.lineJoin = 'round';
+                    drawCtx.stroke();
+                    drawCtx.globalCompositeOperation = 'source-over';
+                } else if (activeTool !== 'pen' && !isSignature && snapshot) {
+                    drawCtx.putImageData(snapshot, 0, 0);
+                    drawCtx.beginPath();
+                    drawCtx.strokeStyle = '#ff0000';
+                    drawCtx.lineWidth = 4;
+                    drawCtx.lineCap = 'round';
+                    drawCtx.lineJoin = 'round';
+
+                    if (activeTool === 'rect') {
+                        drawCtx.rect(startX, startY, x - startX, y - startY);
+                    } else if (activeTool === 'circle') {
+                        const radiusX = Math.abs(x - startX) / 2;
+                        const radiusY = Math.abs(y - startY) / 2;
+                        const centerX = Math.min(x, startX) + radiusX;
+                        const centerY = Math.min(y, startY) + radiusY;
+                        drawCtx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+                    } else if (activeTool === 'arrow') {
+                        drawCtx.moveTo(startX, startY);
+                        drawCtx.lineTo(x, y);
+                        const headlen = 20;
+                        const angle = Math.atan2(y - startY, x - startX);
+                        drawCtx.lineTo(x - headlen * Math.cos(angle - Math.PI / 6), y - headlen * Math.sin(angle - Math.PI / 6));
+                        drawCtx.moveTo(x, y);
+                        drawCtx.lineTo(x - headlen * Math.cos(angle + Math.PI / 6), y - headlen * Math.sin(angle + Math.PI / 6));
+                    }
+                    drawCtx.stroke();
+                } else {
+                    drawCtx.lineTo(x, y);
+                    drawCtx.strokeStyle = isSignature ? '#000000' : '#ff0000';
+                    drawCtx.lineWidth = isSignature ? 2 : 4;
+                    drawCtx.lineCap = 'round';
+                    drawCtx.lineJoin = 'round';
+                    drawCtx.stroke();
+                }
+                
+                setHasDrawn(true);
+            };
+
+            const stopDrawing = () => {
+                if (isDrawing) {
+                    setIsDrawing(false);
+                    const drawCanvas = canvasRef.current;
+                    const bgCanvas = bgCanvasRef.current;
+                    const drawCtx = drawCanvas.getContext('2d');
+                    
+                    const currentImgData = drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+                    setHistory(prev => [...prev, currentImgData]);
+                    
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = drawCanvas.width;
+                    tempCanvas.height = drawCanvas.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    
+                    tempCtx.drawImage(bgCanvas, 0, 0);
+                    tempCtx.drawImage(drawCanvas, 0, 0);
+                    
+                    onSave(tempCanvas.toDataURL('image/png'));
+                }
+            };
+
+            const handleUndo = () => {
+                if (history.length === 0) return;
+                
+                const newHistory = [...history];
+                newHistory.pop();
+                setHistory(newHistory);
+                
+                const drawCanvas = canvasRef.current;
+                const drawCtx = drawCanvas.getContext('2d');
+                drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                
+                if (newHistory.length > 0) {
+                    drawCtx.putImageData(newHistory[newHistory.length - 1], 0, 0);
+                } else {
+                    if (isSignature) setHasDrawn(false);
+                }
+                
+                const bgCanvas = bgCanvasRef.current;
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = drawCanvas.width;
+                tempCanvas.height = drawCanvas.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                tempCtx.drawImage(bgCanvas, 0, 0);
+                tempCtx.drawImage(drawCanvas, 0, 0);
+                
+                if (newHistory.length === 0 && !isSignature) {
+                    onSave(bgCanvas.toDataURL('image/png'));
+                } else if (newHistory.length === 0 && isSignature) {
+                    onSave('');
+                } else {
+                    onSave(tempCanvas.toDataURL('image/png'));
+                }
+            };
+
+            const clearCanvas = () => {
+                const drawCanvas = canvasRef.current;
+                const drawCtx = drawCanvas.getContext('2d');
+                drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                
+                setHasDrawn(false);
+                setHistory([]); 
+
+                if (!isSignature) {
+                    onSave(bgCanvasRef.current.toDataURL('image/png'));
+                } else {
+                    onSave('');
+                }
+            };
+
+            return (
+                <div className="flex flex-col items-center border rounded-lg bg-gray-50 overflow-hidden relative w-full" style={{ maxWidth: `${width}px` }}>
+                    <div className="relative w-full" style={{ aspectRatio: `${width} / ${height}` }}>
+                        <canvas ref={bgCanvasRef} width={width} height={height} className="absolute inset-0 w-full h-full touch-none" />
+                        <canvas
+                            ref={canvasRef}
+                            width={width}
+                            height={height}
+                            onMouseDown={startDrawing}
+                            onMouseMove={draw}
+                            onMouseUp={stopDrawing}
+                            onMouseLeave={stopDrawing}
+                            onTouchStart={startDrawing}
+                            onTouchMove={draw}
+                            onTouchEnd={stopDrawing}
+                            className={`absolute inset-0 w-full h-full touch-none ${activeTool === 'eraser' ? 'cursor-cell' : 'cursor-crosshair'}`}
+                        />
+                    </div>
+                    
+                    {!isSignature && (
+                        <div className="absolute top-2 left-2 flex gap-1 bg-white p-1 rounded-md shadow-sm border border-gray-200">
+                            <button type="button" onClick={() => setActiveTool('pen')} className={`p-1.5 rounded-md transition-colors ${activeTool === 'pen' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`} title="Lukisan Bebas"><Icon name="pen-tool" size={16} /></button>
+                            <button type="button" onClick={() => setActiveTool('rect')} className={`p-1.5 rounded-md transition-colors ${activeTool === 'rect' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`} title="Petak"><Icon name="square" size={16} /></button>
+                            <button type="button" onClick={() => setActiveTool('circle')} className={`p-1.5 rounded-md transition-colors ${activeTool === 'circle' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`} title="Bulatan"><Icon name="circle" size={16} /></button>
+                            <button type="button" onClick={() => setActiveTool('arrow')} className={`p-1.5 rounded-md transition-colors ${activeTool === 'arrow' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`} title="Anak Panah"><Icon name="arrow-up-right" size={16} /></button>
+                            <div className="w-px bg-gray-300 mx-1"></div>
+                            <button type="button" onClick={() => setActiveTool('eraser')} className={`p-1.5 rounded-md transition-colors ${activeTool === 'eraser' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'}`} title="Pemadam"><Icon name="eraser" size={16} /></button>
+                            <div className="w-px bg-gray-300 mx-1"></div>
+                            <button type="button" onClick={handleUndo} disabled={history.length === 0} className={`p-1.5 rounded-md transition-colors ${history.length === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'}`} title="Undur (Undo)"><Icon name="undo" size={16} /></button>
+                        </div>
+                    )}
+
+                    <div className="absolute top-2 right-2 flex gap-2">
+                        {hasDrawn && (
+                            <button type="button" onClick={clearCanvas} className="p-1.5 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors shadow-sm text-sm flex items-center gap-1">
+                                <Icon name="trash-2" size={14} /> Padam
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const ConfirmModal = ({ isOpen, message, onConfirm, onCancel }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl transform transition-all">
+                        <h3 className="text-lg font-bold text-gray-900 mb-4">Pengesahan</h3>
+                        <p className="text-gray-600 mb-6">{message}</p>
+                        <div className="flex justify-end gap-3">
+                            <button onClick={onCancel} className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 font-medium">Batal</button>
+                            <button onClick={onConfirm} className="px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 font-medium">Ya, Padam</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('form');
+            const [reports, setReports] = useState([]);
+            const schoolLogo = '6296237493061357492 (1).jpg'; // Logo rasmi
+            const [reportToPrint, setReportToPrint] = useState(null);
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [reportToVerify, setReportToVerify] = useState(null);
+            const [deleteId, setDeleteId] = useState(null);
+            const imageInputRef = useRef(null);
+
+            const [formData, setFormData] = useState({
+                id: null,
+                staffName: '',
+                roomType: '',
+                roomName: '',
+                date: new Date().toISOString().split('T')[0],
+                conditions: [],
+                description: '',
+                images: [], 
+                signature: '',
+                status: 'pending',
+                gbSignature: '',
+                gbName: '',
+                gbAction: '',
+                gbDate: ''
+            });
+
+            useEffect(() => {
+                const savedReports = localStorage.getItem('laporanKerosakan');
+                if (savedReports) setReports(JSON.parse(savedReports));
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('laporanKerosakan', JSON.stringify(reports));
+            }, [reports]);
+
+            const handleImageUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        if (formData.images.length < 2) {
+                            setFormData(prev => ({
+                                ...prev,
+                                images: [...prev.images, { id: Date.now(), original: reader.result, annotated: reader.result }]
+                            }));
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+                if (e.target) e.target.value = '';
+            };
+
+            const handleConditionChange = (condition) => {
+                const current = formData.conditions;
+                const updated = current.includes(condition)
+                    ? current.filter(c => c !== condition)
+                    : [...current, condition];
+                setFormData({ ...formData, conditions: updated });
+            };
+
+            const handleGenerateAI = async (e) => {
+                if (formData.images.length === 0 && (!formData.description || formData.description.trim() === '')) {
+                    const btn = e.currentTarget;
+                    const oldText = btn.innerHTML;
+                    btn.innerHTML = 'Perlukan gambar atau nota!';
+                    btn.classList.remove('bg-indigo-50', 'text-indigo-600');
+                    btn.classList.add('bg-red-100', 'text-red-600');
+                    setTimeout(() => {
+                        btn.innerHTML = oldText;
+                        btn.classList.remove('bg-red-100', 'text-red-600');
+                        btn.classList.add('bg-indigo-50', 'text-indigo-600');
+                    }, 3000);
+                    return;
+                }
+
+                setIsGenerating(true);
+                try {
+                    const apiKey = ""; 
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                    const userNote = formData.description ? `Nota tambahan: ${formData.description}` : '';
+                    const prompt = `Berdasarkan gambar kerosakan yang disertakan (jika ada) dan nota berikut, tuliskan satu perenggan penerangan rasmi dan profesional (dalam Bahasa Melayu) mengenai kerosakan fizikal tersebut. Penerangan ini akan digunakan dalam laporan rasmi kerosakan fasiliti sekolah. Terus kepada intipati kerosakan tanpa pendahuluan surat. ${userNote}`;
+
+                    const parts = [{ text: prompt }];
+
+                    formData.images.forEach(img => {
+                        if (img.original) {
+                            const arr = img.original.split(',');
+                            if (arr.length === 2) {
+                                const mimeMatch = arr[0].match(/:(.*?);/);
+                                if (mimeMatch) {
+                                    parts.push({
+                                        inlineData: { mimeType: mimeMatch[1], data: arr[1] }
+                                    });
+                                }
+                            }
+                        }
+                    });
+
+                    const payload = { contents: [{ role: "user", parts: parts }] };
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const result = await response.json();
+                    if (result.candidates && result.candidates[0].content) {
+                        const generatedText = result.candidates[0].content.parts[0].text;
+                        setFormData(prev => ({ ...prev, description: generatedText.trim() }));
+                    }
+                } catch (error) {
+                    console.error("Error generating AI description:", error);
+                } finally {
+                    setIsGenerating(false);
+                }
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!formData.staffName || !formData.roomType || !formData.date || !formData.signature) {
+                    const btn = document.getElementById('submitBtn');
+                    const oldText = btn.innerHTML;
+                    btn.innerHTML = 'Sila lengkapkan borang (Nama, Bilik, Tarikh & Tandatangan)';
+                    btn.classList.add('bg-red-500');
+                    setTimeout(() => {
+                        btn.innerHTML = oldText;
+                        btn.classList.remove('bg-red-500');
+                    }, 3000);
+                    return;
+                }
+
+                if (formData.id) {
+                    setReports(reports.map(r => r.id === formData.id ? formData : r));
+                } else {
+                    setReports([{ ...formData, id: Date.now() }, ...reports]);
+                }
+                
+                resetForm();
+                setActiveTab('records');
+            };
+
+            const resetForm = () => {
+                setFormData({
+                    id: null, staffName: '', roomType: '', roomName: '',
+                    date: new Date().toISOString().split('T')[0], conditions: [], description: '',
+                    images: [], signature: '', status: 'pending', gbSignature: '', gbName: '', gbAction: '', gbDate: ''
+                });
+                if (imageInputRef.current) imageInputRef.current.value = '';
+            };
+
+            const editReport = (report) => {
+                let reportImages = report.images || [];
+                if (reportImages.length === 0 && report.evidenceImage) {
+                    reportImages = [{ id: Date.now(), original: report.evidenceImage, annotated: report.annotatedImage }];
+                }
+                setFormData({ 
+                    ...report, images: reportImages, status: report.status || 'pending',
+                    gbSignature: report.gbSignature || '', gbName: report.gbName || '',
+                    gbAction: report.gbAction || '', gbDate: report.gbDate || ''
+                });
+                setActiveTab('form');
+            };
+
+            if (activeTab === 'print' && reportToPrint) {
+                const isBilikDarjah = reportToPrint.roomType.toLowerCase().includes('bilik darjah');
+                const bilikDisplay = isBilikDarjah && reportToPrint.roomName ? `${reportToPrint.roomType} (${reportToPrint.roomName})` : reportToPrint.roomType;
+                let displayImages = reportToPrint.images || [];
+                if (displayImages.length === 0 && reportToPrint.evidenceImage) {
+                    displayImages = [{ original: reportToPrint.evidenceImage, annotated: reportToPrint.annotatedImage }];
+                }
+
+                return (
+                    <div className="bg-gray-100 min-h-screen py-8 print-py-0 print:bg-white overflow-auto flex flex-col items-center">
+                        <div className="w-full max-w-[210mm] mb-6 flex justify-between items-center print-hidden px-4 md:px-0 controls-print">
+                            <p className="text-gray-500 text-sm font-semibold uppercase tracking-wider">Pratonton Cetakan</p>
+                            <div className="flex gap-3">
+                                <button onClick={() => { setActiveTab('records'); setReportToPrint(null); }} className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg shadow-sm hover:bg-gray-50 font-medium flex items-center gap-2">
+                                    <Icon name="arrow-left" size={18} /> Kembali
+                                </button>
+                                <button onClick={() => window.print()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700 font-medium flex items-center gap-2 transition-colors">
+                                    <Icon name="download" size={18} /> Muat Turun PDF
+                                </button>
+                                <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 font-medium flex items-center gap-2 transition-colors">
+                                    <Icon name="printer" size={18} /> Cetak
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-10 w-full max-w-[210mm] min-h-[297mm] mx-auto text-black shadow-xl print-container relative">
+                            <div className="flex items-center border-b-4 border-double border-gray-800 pb-6 mb-6">
+                                <img src={schoolLogo} alt="Logo Sekolah" className="w-24 h-24 object-contain mr-6" />
+                                <div className="flex-1 text-center pr-24">
+                                    <h1 className="text-2xl font-bold uppercase text-gray-900 tracking-wide">Laporan Kerosakan Fizikal</h1>
+                                    <h2 className="text-xl font-semibold text-gray-800 mt-1">SK Pendidikan Khas Miri</h2>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-y-4 gap-x-8 mb-8 text-sm">
+                                <div className="flex flex-col border-b border-gray-200 pb-2">
+                                    <span className="font-semibold text-gray-600 uppercase text-xs mb-1">Nama Pelapor:</span>
+                                    <span className="text-base font-bold text-gray-900">{reportToPrint.staffName}</span>
+                                </div>
+                                <div className="flex flex-col border-b border-gray-200 pb-2">
+                                    <span className="font-semibold text-gray-600 uppercase text-xs mb-1">Tarikh Laporan:</span>
+                                    <span className="text-base font-bold text-gray-900">{new Date(reportToPrint.date).toLocaleDateString('ms-MY', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                </div>
+                                <div className="flex flex-col border-b border-gray-200 pb-2 col-span-2">
+                                    <span className="font-semibold text-gray-600 uppercase text-xs mb-1">Lokasi Kerosakan (Bilik/Kelas):</span>
+                                    <span className="text-base font-bold text-gray-900">{bilikDisplay}</span>
+                                </div>
+                            </div>
+
+                            <div className="mb-5">
+                                <span className="font-semibold text-gray-600 uppercase text-xs mb-3 block">Senarai Keadaan Fizikal Terlibat:</span>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    {KEADAAN_FIZIKAL.map(cond => (
+                                        <div key={cond} className="flex items-center gap-2">
+                                            <div className={`w-4 h-4 rounded-sm border flex items-center justify-center ${reportToPrint.conditions.includes(cond) ? 'bg-black border-black' : 'border-gray-400'}`}>
+                                                {reportToPrint.conditions.includes(cond) && <Icon name="check" size={12} className="text-white" strokeWidth={3} />}
+                                            </div>
+                                            <span className={`text-sm ${reportToPrint.conditions.includes(cond) ? 'font-bold text-gray-900' : 'text-gray-500'}`}>{cond}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="mb-5">
+                                <span className="font-semibold text-gray-600 uppercase text-xs mb-1 block">Catatan / Penerangan Kerosakan:</span>
+                                <p className="text-sm text-gray-900 border-b border-gray-200 pb-2 min-h-[30px]">
+                                    {reportToPrint.description || <span className="text-gray-400 italic">Tiada catatan tambahan diberikan.</span>}
+                                </p>
+                            </div>
+
+                            {(reportToPrint.gbAction || reportToPrint.status === 'verified') && (
+                                <div className="mb-5 print-break-inside-avoid">
+                                    <span className="font-semibold text-gray-600 uppercase text-xs mb-1 block">Tindakan / Ulasan Guru Besar:</span>
+                                    <p className="text-sm text-gray-900 border-b border-gray-200 pb-2 min-h-[30px]">
+                                        {reportToPrint.gbAction || <span className="text-gray-400 italic">Disahkan tanpa ulasan tambahan.</span>}
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="mb-5 print-break-inside-avoid">
+                                <span className="font-semibold text-gray-600 uppercase text-xs mb-3 block">Bukti Bergambar Kerosakan (Berpenunjuk):</span>
+                                {displayImages.length > 0 ? (
+                                    <div className={`grid gap-4 ${displayImages.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                        {displayImages.map((img, idx) => (
+                                            <div key={idx} className="border-2 border-dashed border-gray-300 p-2 rounded-lg text-center flex items-center justify-center" style={{ height: displayImages.length === 2 ? '220px' : '300px' }}>
+                                                <img src={img.annotated || img.original} alt={`Bukti kerosakan ${idx + 1}`} className="max-h-full max-w-full object-contain mx-auto rounded" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="h-[200px] bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 italic text-sm">
+                                        Tiada bukti gambar disertakan.
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-auto pt-8 border-t border-gray-200 print-break-inside-avoid flex justify-between">
+                                <div className="w-64 text-center">
+                                    <span className="font-semibold text-gray-600 uppercase text-xs mb-2 block text-left">Pengesahan Guru Besar:</span>
+                                    {reportToPrint.status === 'verified' && reportToPrint.gbSignature ? (
+                                        <img src={reportToPrint.gbSignature} alt="Tandatangan GB" className="h-24 mx-auto border-b border-gray-400 mb-2 object-contain" />
+                                    ) : (
+                                        <div className="h-24 border-b border-gray-400 mb-2 flex items-center justify-center text-gray-300 text-sm">Belum Disahkan</div>
+                                    )}
+                                    <p className="font-bold text-gray-900 text-sm mt-2 uppercase">{reportToPrint.gbName || 'GURU BESAR'}</p>
+                                    {reportToPrint.gbDate && <p className="text-xs text-gray-500 mt-1">Tarikh: {new Date(reportToPrint.gbDate).toLocaleDateString('ms-MY')}</p>}
+                                </div>
+                                <div className="w-64 text-center">
+                                    <span className="font-semibold text-gray-600 uppercase text-xs mb-2 block text-left">Tandatangan Pelapor:</span>
+                                    {reportToPrint.signature ? (
+                                        <img src={reportToPrint.signature} alt="Tandatangan" className="h-24 mx-auto border-b border-gray-400 mb-2 object-contain" />
+                                    ) : (
+                                        <div className="h-24 border-b border-gray-400 mb-2"></div>
+                                    )}
+                                    <p className="font-bold text-gray-900 text-sm mt-2 uppercase">{reportToPrint.staffName}</p>
+                                    <p className="text-xs text-gray-500 mt-1">Tarikh: {new Date(reportToPrint.date).toLocaleDateString('ms-MY')}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
+                    <ConfirmModal 
+                        isOpen={deleteId !== null} 
+                        message="Adakah anda pasti untuk memadam rekod laporan ini? Tindakan ini tidak boleh dikembalikan." 
+                        onConfirm={() => { setReports(reports.filter(r => r.id !== deleteId)); setDeleteId(null); }} 
+                        onCancel={() => setDeleteId(null)} 
+                    />
+
+                    <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
+                        <div className="max-w-5xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                                <div><img src={schoolLogo} alt="Logo" className="w-16 h-16 object-contain rounded-full shadow-sm bg-white" /></div>
+                                <div>
+                                    <h1 className="text-xl md:text-2xl font-bold text-slate-900 leading-tight">Sistem Laporan Kerosakan</h1>
+                                    <p className="text-slate-500 text-sm font-medium">SK Pendidikan Khas Miri</p>
+                                </div>
+                            </div>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                <button onClick={() => setActiveTab('form')} className={`px-6 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'form' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600 hover:text-slate-900'}`}>Borang</button>
+                                <button onClick={() => setActiveTab('records')} className={`px-6 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === 'records' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600 hover:text-slate-900'}`}>Rekod Laporan</button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-5xl mx-auto px-4 py-8">
+                        
+                        {activeTab === 'form' && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
+                                <div className="flex items-center justify-between mb-8">
+                                    <h2 className="text-2xl font-bold text-slate-800">Borang Laporan Baru</h2>
+                                    {formData.id && (
+                                        <button onClick={resetForm} className="text-sm text-slate-500 hover:text-red-500 flex items-center gap-1"><Icon name="x" size={16}/> Batal Edit</button>
+                                    )}
+                                </div>
+
+                                <form onSubmit={handleSubmit} className="space-y-8">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-2">Nama Pelapor <span className="text-red-500">*</span></label>
+                                            <select required value={formData.staffName} onChange={(e) => setFormData({ ...formData, staffName: e.target.value })} className="w-full p-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none">
+                                                <option value="">-- Pilih Nama --</option>
+                                                {SENARAI_STAF.map(staff => <option key={staff} value={staff}>{staff}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-2">Tarikh <span className="text-red-500">*</span></label>
+                                            <input type="date" required value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} className="w-full p-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-2">Bilik / Lokasi <span className="text-red-500">*</span></label>
+                                            <select required value={formData.roomType} onChange={(e) => setFormData({ ...formData, roomType: e.target.value, roomName: '' })} className="w-full p-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none">
+                                                <option value="">-- Pilih Bilik --</option>
+                                                {SENARAI_BILIK.map(room => <option key={room} value={room}>{room}</option>)}
+                                            </select>
+                                        </div>
+                                        {formData.roomType.toLowerCase().includes('bilik darjah') && (
+                                            <div>
+                                                <label className="block text-sm font-semibold text-slate-700 mb-2">Nama Kelas <span className="text-red-500">*</span></label>
+                                                <select required value={formData.roomName} onChange={(e) => setFormData({ ...formData, roomName: e.target.value })} className="w-full p-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none">
+                                                    <option value="">-- Pilih Kelas --</option>
+                                                    {SENARAI_KELAS.map(kelas => <option key={kelas} value={kelas}>{kelas}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="pt-4 border-t border-slate-100">
+                                        <label className="block text-sm font-semibold text-slate-700 mb-4">Keadaan Fizikal Terlibat (Tandakan yang berkaitan)</label>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            {KEADAAN_FIZIKAL.map(cond => (
+                                                <label key={cond} className="flex items-center p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors group">
+                                                    <input type="checkbox" checked={formData.conditions.includes(cond)} onChange={() => handleConditionChange(cond)} className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                                                    <span className="ml-3 text-slate-700 group-hover:text-slate-900">{cond}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-slate-100">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="block text-sm font-semibold text-slate-700">Penerangan / Catatan Kerosakan</label>
+                                            <button type="button" onClick={handleGenerateAI} disabled={isGenerating} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors disabled:opacity-50 min-w-[100px] justify-center" title="Jana menggunakan AI berdasarkan gambar & nota ringkas">
+                                                {isGenerating ? <Icon name="loader-2" size={16} className="animate-spin" /> : <Icon name="sparkles" size={16} />}
+                                                {isGenerating ? 'Menjana...' : 'Jana AI'}
+                                            </button>
+                                        </div>
+                                        <textarea rows="3" placeholder="Nyatakan butiran lanjut mengenai kerosakan atau catat kata kunci ringkas sebelum menekan 'Jana AI'" value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="w-full p-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none resize-y"></textarea>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-slate-100">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                <Icon name="image" size={18} /> Bukti Bergambar (Maksimum 2 gambar)
+                                            </label>
+                                            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full">{formData.images.length} / 2</span>
+                                        </div>
+                                        
+                                        <div className="space-y-6">
+                                            {formData.images.map((img, index) => (
+                                                <div key={img.id} className="space-y-3 p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                    <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                                        <p className="text-sm text-blue-800 flex items-center gap-2"><Icon name="pen-tool" size={16}/> <strong>Gambar {index + 1}:</strong> Lukis petunjuk kerosakan.</p>
+                                                        <button type="button" onClick={() => { const newImages = [...formData.images]; newImages.splice(index, 1); setFormData({...formData, images: newImages}); }} className="text-xs text-red-600 font-medium hover:underline bg-white px-2 py-1 rounded shadow-sm flex items-center gap-1">
+                                                            <Icon name="trash-2" size={12}/> Padam Gambar Ini
+                                                        </button>
+                                                    </div>
+                                                    <DrawingCanvas defaultImage={img.original} onSave={(dataUrl) => { const newImages = [...formData.images]; newImages[index].annotated = dataUrl || newImages[index].original; setFormData({...formData, images: newImages}); }} />
+                                                </div>
+                                            ))}
+
+                                            {formData.images.length < 2 && (
+                                                <div onClick={() => imageInputRef.current?.click()} className="w-full h-32 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-blue-400 transition-all group">
+                                                    <div className="bg-white p-2 rounded-full shadow-sm mb-2 group-hover:scale-110 transition-transform"><Icon name="upload" className="text-blue-500" size={20} /></div>
+                                                    <p className="text-slate-600 font-medium text-sm">Klik untuk tambah gambar {formData.images.length === 1 ? 'kedua' : ''}</p>
+                                                    <p className="text-slate-400 text-xs mt-1">PNG, JPG sehingga 5MB</p>
+                                                    <input type="file" accept="image/*" className="hidden" ref={imageInputRef} onChange={handleImageUpload} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-slate-100">
+                                        <label className="block text-sm font-semibold text-slate-700 mb-4">Tandatangan Pelapor <span className="text-red-500">*</span></label>
+                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                            <p className="text-xs text-slate-500 mb-2">Sila tandatangan di dalam kotak di bawah (Dakwat Hitam):</p>
+                                            <DrawingCanvas isSignature={true} width={400} height={200} defaultImage={formData.signature} onSave={(dataUrl) => setFormData({...formData, signature: dataUrl})} />
+                                        </div>
+                                    </div>
+
+                                    <button id="submitBtn" type="submit" className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-200 hover:bg-blue-700 hover:shadow-blue-300 transition-all flex items-center justify-center gap-2">
+                                        <Icon name="save" size={20} />
+                                        {formData.id ? 'Kemaskini Laporan' : 'Hantar Laporan'}
+                                    </button>
+                                </form>
+                            </div>
+                        )}
+
+                        {activeTab === 'records' && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
+                                <h2 className="text-2xl font-bold text-slate-800 mb-6">Senarai Laporan Direkodkan</h2>
+                                {reports.length === 0 ? (
+                                    <div className="text-center py-16 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+                                        <div className="bg-white w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-sm mb-4">
+                                            <Icon name="check-circle" className="text-slate-300" size={32} />
+                                        </div>
+                                        <p className="text-slate-500 font-medium text-lg">Tiada laporan kerosakan direkodkan.</p>
+                                        <button onClick={() => setActiveTab('form')} className="mt-4 px-6 py-2 bg-blue-50 text-blue-600 rounded-full font-semibold hover:bg-blue-100 transition-colors">Buat Laporan Baru</button>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-y border-slate-200 text-slate-600 text-sm uppercase tracking-wider">
+                                                    <th className="p-4 font-semibold rounded-tl-lg">Tarikh</th>
+                                                    <th className="p-4 font-semibold">Pelapor</th>
+                                                    <th className="p-4 font-semibold">Lokasi</th>
+                                                    <th className="p-4 font-semibold text-center">Status</th>
+                                                    <th className="p-4 font-semibold text-center rounded-tr-lg">Tindakan</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {reports.map((report) => (
+                                                    <tr key={report.id} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="p-4 text-slate-800 whitespace-nowrap">{new Date(report.date).toLocaleDateString('ms-MY')}</td>
+                                                        <td className="p-4 text-slate-800 font-medium">{report.staffName}</td>
+                                                        <td className="p-4 text-slate-600">
+                                                            {report.roomType.toLowerCase().includes('bilik darjah') && report.roomName ? `${report.roomType} (${report.roomName})` : report.roomType}
+                                                        </td>
+                                                        <td className="p-4 text-center">
+                                                            {report.status === 'verified' ? (
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+                                                                    <Icon name="check-circle" size={12} /> Disahkan
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 border border-red-200">
+                                                                    <Icon name="clock" size={12} /> Belum Disahkan
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <button onClick={() => { setReportToVerify({...report, gbName: report.gbName || 'Guru Besar'}); setActiveTab('verify'); }} title="Sahkan Laporan (Guru Besar)" className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors border border-transparent hover:border-green-100"><Icon name="shield-check" size={18} /></button>
+                                                                <button onClick={() => { setReportToPrint(report); setActiveTab('print'); }} title="Cetak/PDF" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100"><Icon name="printer" size={18} /></button>
+                                                                <button onClick={() => editReport(report)} title="Edit" className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors border border-transparent hover:border-amber-100"><Icon name="pencil" size={18} /></button>
+                                                                <button onClick={() => setDeleteId(report.id)} title="Padam" className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"><Icon name="trash-2" size={18} /></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'verify' && reportToVerify && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-3xl mx-auto">
+                                <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-100">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-slate-800">Pengesahan Guru Besar</h2>
+                                        <p className="text-slate-500 mt-1">Sila semak laporan dan sahkan dengan tandatangan.</p>
+                                    </div>
+                                    <button onClick={() => { setActiveTab('records'); setReportToVerify(null); }} className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1 px-3 py-2 bg-slate-50 rounded-lg transition-colors">
+                                        <Icon name="arrow-left" size={16}/> Kembali
+                                    </button>
+                                </div>
+
+                                <div className="bg-slate-50 p-4 rounded-xl mb-6 border border-slate-200">
+                                    <h3 className="text-sm font-bold uppercase text-slate-400 mb-3 tracking-wider">Ringkasan Laporan</h3>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                        <div><span className="block text-slate-500 text-xs mb-1">Pelapor</span><span className="font-semibold text-slate-800">{reportToVerify.staffName}</span></div>
+                                        <div><span className="block text-slate-500 text-xs mb-1">Lokasi</span><span className="font-semibold text-slate-800">{reportToVerify.roomType} {reportToVerify.roomName ? `(${reportToVerify.roomName})` : ''}</span></div>
+                                        <div><span className="block text-slate-500 text-xs mb-1">Tarikh Dilapor</span><span className="font-semibold text-slate-800">{new Date(reportToVerify.date).toLocaleDateString('ms-MY')}</span></div>
+                                        <div className="col-span-2"><span className="block text-slate-500 text-xs mb-1">Penerangan</span><span className="text-slate-700 block">{reportToVerify.description || '-'}</span></div>
+                                    </div>
+                                </div>
+
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    if (!reportToVerify.gbSignature) {
+                                        const btn = document.getElementById('verifySubmitBtn');
+                                        const oldText = btn.innerHTML;
+                                        btn.innerHTML = 'Sila Turunkan Tandatangan!';
+                                        btn.classList.replace('bg-green-600', 'bg-red-500');
+                                        setTimeout(() => { btn.innerHTML = oldText; btn.classList.replace('bg-red-500', 'bg-green-600'); }, 3000);
+                                        return;
+                                    }
+                                    const updatedReport = { ...reportToVerify, status: 'verified', gbDate: new Date().toISOString().split('T')[0] };
+                                    setReports(reports.map(r => r.id === updatedReport.id ? updatedReport : r));
+                                    setActiveTab('records');
+                                    setReportToVerify(null);
+                                }} className="space-y-6">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-2">Nama Guru Besar / Jawatan</label>
+                                        <input type="text" required value={reportToVerify.gbName} onChange={(e) => setReportToVerify({ ...reportToVerify, gbName: e.target.value })} className="w-full p-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none" placeholder="Contoh: GURU BESAR SKPK MIRI" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-2">Ulasan / Tindakan Susulan (Pilihan)</label>
+                                        <textarea rows="3" value={reportToVerify.gbAction || ''} onChange={(e) => setReportToVerify({ ...reportToVerify, gbAction: e.target.value })} className="w-full p-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none resize-y" placeholder="Nyatakan ulasan, status pembaikan atau tindakan susulan..."></textarea>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-2">Tandatangan Pengesahan <span className="text-red-500">*</span></label>
+                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex justify-center">
+                                            <DrawingCanvas isSignature={true} width={400} height={200} defaultImage={reportToVerify.gbSignature} onSave={(dataUrl) => setReportToVerify({...reportToVerify, gbSignature: dataUrl})} />
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3 pt-4 border-t border-slate-100">
+                                        <button type="button" onClick={() => { setActiveTab('records'); setReportToVerify(null); }} className="flex-1 py-3 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-all">Batal</button>
+                                        <button id="verifySubmitBtn" type="submit" className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold shadow-lg shadow-green-200 hover:bg-green-700 hover:shadow-green-300 transition-all flex items-center justify-center gap-2">
+                                            <Icon name="shield-check" size={20} /> Sahkan Laporan
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
